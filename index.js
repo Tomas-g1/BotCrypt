@@ -1,8 +1,8 @@
-const express = require("express");
+import express from "express";
 const app = express();
-
 app.get("/", (req, res) => res.send("BotCrypt activo"));
-app.listen(3000, () => console.log("Servidor web escuchando en puerto 3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
 
 require('dotenv').config();
 const {
@@ -110,4 +110,5 @@ client.on(Events.InteractionCreate, async (i) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
 
