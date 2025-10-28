@@ -1,4 +1,4 @@
-import express from "express";
+const express = require("express");
 const app = express();
 app.get("/", (req, res) => res.send("BotCrypt activo"));
 const PORT = process.env.PORT || 3000;
@@ -110,5 +110,6 @@ client.on(Events.InteractionCreate, async (i) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
 
 
