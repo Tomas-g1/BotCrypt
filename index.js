@@ -1,3 +1,9 @@
+const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => res.send("BotCrypt activo"));
+app.listen(3000, () => console.log("Servidor web escuchando en puerto 3000"));
+
 require('dotenv').config();
 const {
   Client, GatewayIntentBits,
@@ -104,3 +110,4 @@ client.on(Events.InteractionCreate, async (i) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
