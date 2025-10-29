@@ -14,6 +14,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName('cping')
     .setDescription('Ping del bot'),
+new SlashCommandBuilder()
+  .setName('cryptinstall')
+  .setDescription('Publica la guía visual y descarga de Crypt External en ESTE canal'),
 
   // /proof
 new SlashCommandBuilder()
@@ -64,6 +67,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error('Error registrando comandos:', e);
   }
 })();
+
 
 
 
