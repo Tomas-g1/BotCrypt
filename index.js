@@ -128,5 +128,7 @@ client.on(Events.InteractionCreate, async (i) => {
     else await i.reply({ content: 'Error.', ephemeral: true });
   }
 });
-
+// registra los comandos automáticamente (solo dejar temporalmente)
+require('./deploy-commands');
 client.login(process.env.DISCORD_TOKEN);
+
