@@ -19,7 +19,8 @@ const commands = [
 new SlashCommandBuilder()
   .setName('proof')
   .setDescription('Publica un comprobante en el canal de vouches')
-  // REQUERIDAS primero
+
+  // REQUERIDAS
   .addStringOption(o =>
     o.setName('producto').setDescription('Nombre del producto').setRequired(true)
   )
@@ -36,10 +37,17 @@ new SlashCommandBuilder()
   .addAttachmentOption(o =>
     o.setName('imagen').setDescription('Foto del comprobante').setRequired(true)
   )
-  // OPCIONAL al final
-  .addUserOption(o =>
-    o.setName('comprador').setDescription('Usuario comprador (opcional)')
+
+  // OPCIONALES (orden después de las requeridas)
+  .addStringOption(o =>
+    o.setName('comprador_texto')
+     .setDescription('Texto del comprador. Escribí "Anon" si no quiere mostrarse')
   )
+  .addUserOption(o =>
+    o.setName('comprador')
+     .setDescription('Usuario comprador (opcional)')
+  )
+
 
 ].map(c => c.toJSON());
 
@@ -56,6 +64,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error('Error registrando comandos:', e);
   }
 })();
+
 
 
 
