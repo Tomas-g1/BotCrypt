@@ -9,7 +9,7 @@ const {
   Client, GatewayIntentBits,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle,
-  EmbedBuilder, PermissionsBitField, Events
+  EmbedBuilder, PermissionsBitField, Events, collection
 } = require('discord.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -112,7 +112,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
 const fs = require('fs');
 const path = require('path');
-const { Collection, Events } = require('discord.js');
+
 
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
@@ -134,5 +134,6 @@ client.on(Events.InteractionCreate, async (i) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
 
 
