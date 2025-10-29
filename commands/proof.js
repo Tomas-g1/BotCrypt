@@ -6,16 +6,17 @@ module.exports = {
     .setDescription('Publica un comprobante en el canal de vouches')
     .addStringOption(o => o.setName('producto').setDescription('Nombre del producto').setRequired(true))
     .addStringOption(o =>
-      o.setName('duracion').setDescription('Duración del plan')
+      o.setName('duracion').setDescription('Duración')
        .addChoices(
          { name: 'Lifetime', value: 'Lifetime' },
          { name: 'Monthly', value: 'Monthly' },
-         { name: 'Weekly', value: 'Weekly' },
-         { name: 'Daily', value: 'Daily' }
+         { name: 'Weekly',  value: 'Weekly'  },
+         { name: 'Daily',   value: 'Daily'   }
        ).setRequired(true))
     .addUserOption(o => o.setName('comprador').setDescription('Usuario comprador (opcional)'))
     .addAttachmentOption(o => o.setName('imagen').setDescription('Captura del comprobante').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+
   async execute(interaction) {
     const producto  = interaction.options.getString('producto', true);
     const duracion  = interaction.options.getString('duracion', true);
@@ -32,7 +33,7 @@ module.exports = {
       .addFields(
         { name: '🧩 Producto',  value: producto, inline: true },
         { name: '⏱️ Duración',  value: duracion, inline: true },
-        { name: '🛍️ Comprador', value: buyer, inline: true },
+        { name: '🛍️ Comprador', value: buyer,    inline: true },
       )
       .setImage(imagen.url)
       .setColor(0x00D084)
