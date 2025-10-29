@@ -4,6 +4,8 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (_req, res) => res.send('BotCrypt activo'));
+// 🔹 Health-check para UptimeRobot y Render
+app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
 
 const {
@@ -144,4 +146,5 @@ client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
   process.exit(1);
 });
+
 
