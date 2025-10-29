@@ -1,6 +1,5 @@
 const express = require("express");
 const app = express();
-
 app.get("/", (req, res) => res.send("BotCrypt activo"));
 app.listen(3000, () => console.log("Servidor web escuchando en puerto 3000"));
 
@@ -9,8 +8,10 @@ const {
   Client, GatewayIntentBits,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle,
-  EmbedBuilder, PermissionsBitField, Events, collection
+  EmbedBuilder, PermissionsBitField, Events, Collection // <- correcto
 } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const STAR='★', EMPTY='☆';
@@ -42,6 +43,12 @@ client.on(Events.InteractionCreate, async (i) => {
     return;
   }
 
+  // /cping
+  if (i.isChatInputCommand() && i.commandName === 'cping') {
+    const ws = Math.round(client.ws.ping);
+    return i.reply({ content: `🏓 Pong ${ws} ms` });
+  }
+
   // Abrir modal
   if (i.isButton() && i.customId.startsWith('openreview:')) {
     const [ , staffId, clienteId, titulo ] = i.customId.split(':');
@@ -53,24 +60,17 @@ client.on(Events.InteractionCreate, async (i) => {
       .setTitle('📝 Comentario breve');
 
     const puntaje = new TextInputBuilder()
-      .setCustomId('puntaje')
-      .setLabel('Puntaje (1–5)')
-      .setPlaceholder('1-5')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+      .setCustomId('puntaje').setLabel('Puntaje (1–5)')
+      .setPlaceholder('1-5').setStyle(TextInputStyle.Short).setRequired(true);
 
     const comentario = new TextInputBuilder()
-      .setCustomId('texto')
-      .setLabel('¿Qué te pareció la atención?')
-      .setStyle(TextInputStyle.Paragraph)
-      .setMaxLength(300)
-      .setRequired(false);
+      .setCustomId('texto').setLabel('¿Qué te pareció la atención?')
+      .setStyle(TextInputStyle.Paragraph).setMaxLength(300).setRequired(false);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(puntaje),
       new ActionRowBuilder().addComponents(comentario)
     );
-
     return i.showModal(modal);
   }
 
@@ -82,7 +82,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
     let n = parseInt(i.fields.getTextInputValue('puntaje'), 10);
     if (!Number.isInteger(n) || n < 1 || n > 5)
-      return i.reply({ content: 'Puntaje inválido. Usá un número del 1 al 5.', ephemeral: true });
+      return i.reply({ content: 'Puntaje inválido. Usá 1–5.', ephemeral: true });
 
     const texto = i.fields.getTextInputValue('texto')?.trim();
     const estrellas = STAR.repeat(n) + EMPTY.repeat(5 - n);
@@ -105,15 +105,11 @@ client.on(Events.InteractionCreate, async (i) => {
       return i.reply({ content: 'Sin permisos en el canal de reseñas.', ephemeral: true });
 
     await ch.send({ embeds: [embed] });
-    return i.reply({ content: '✅ Reseña enviada. Gracias.', ephemeral: true });
+    return i.reply({ content: '✅ Reseña enviada.', ephemeral: true });
   }
 });
 
-
-const fs = require('fs');
-const path = require('path');
-
-
+// Carga de comandos de /commands (ej. /proof)
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
@@ -134,6 +130,3 @@ client.on(Events.InteractionCreate, async (i) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-
-
