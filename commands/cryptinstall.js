@@ -58,12 +58,12 @@ module.exports = {
     const description =
 `🔧 **Guía visual – Instalación de Crypt External**
 Mira el video paso a paso 👉 ${VIDEO_URL}
-
+**Descarga Crypt External💥**👇
 ${DOWNLOAD_URL}`;
 
     const buttons = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('🎬 Ver video').setURL(VIDEO_URL),
-      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('⬇️ Descargar').setURL(DOWNLOAD_URL),
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('⬇️ Descargar Crypt External').setURL(DOWNLOAD_URL),
     );
 
     const embed = new EmbedBuilder()
