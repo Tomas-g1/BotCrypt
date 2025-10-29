@@ -1,14 +1,16 @@
-const express = require("express");
-const app = express();
-app.get("/", (req, res) => res.send("BotCrypt activo"));
-app.listen(3000, () => console.log("Servidor web escuchando en puerto 3000"));
-
 require('dotenv').config();
+
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send('BotCrypt activo'));
+app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
+
 const {
   Client, GatewayIntentBits,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle,
-  EmbedBuilder, PermissionsBitField, Events, Collection // <- correcto
+  EmbedBuilder, PermissionsBitField, Events, Collection
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -20,8 +22,8 @@ client.once(Events.ClientReady, () => {
   console.log(`Bot conectado como ${client.user.tag}`);
 });
 
+
 client.on(Events.InteractionCreate, async (i) => {
-  // /review
   if (i.isChatInputCommand() && i.commandName === 'review') {
     const staff   = i.options.getUser('staff', true);
     const cliente = i.options.getUser('cliente', false);
@@ -53,7 +55,7 @@ client.on(Events.InteractionCreate, async (i) => {
   if (i.isButton() && i.customId.startsWith('openreview:')) {
     const [ , staffId, clienteId, titulo ] = i.customId.split(':');
     if (clienteId !== 'any' && i.user.id !== clienteId)
-      return i.reply({ content: 'Este panel no es para vos.', ephemeral: true });
+      return i.reply({ content: 'Este panel no es para vos.', flags: 64 });
 
     const modal = new ModalBuilder()
       .setCustomId(`submitreview:${staffId}:${clienteId}:${titulo}`)
@@ -78,11 +80,11 @@ client.on(Events.InteractionCreate, async (i) => {
   if (i.isModalSubmit() && i.customId.startsWith('submitreview:')) {
     const [ , staffId, clienteId, titulo ] = i.customId.split(':');
     if (clienteId !== 'any' && i.user.id !== clienteId)
-      return i.reply({ content: 'No autorizado.', ephemeral: true });
+      return i.reply({ content: 'No autorizado.', flags: 64 });
 
     let n = parseInt(i.fields.getTextInputValue('puntaje'), 10);
     if (!Number.isInteger(n) || n < 1 || n > 5)
-      return i.reply({ content: 'Puntaje inválido. Usá 1–5.', ephemeral: true });
+      return i.reply({ content: 'Puntaje inválido. Usá 1–5.', flags: 64 });
 
     const texto = i.fields.getTextInputValue('texto')?.trim();
     const estrellas = STAR.repeat(n) + EMPTY.repeat(5 - n);
@@ -102,14 +104,16 @@ client.on(Events.InteractionCreate, async (i) => {
 
     const ch = i.guild.channels.cache.get(process.env.REVIEWS_CHANNEL_ID);
     if (!ch || !ch.permissionsFor(i.guild.members.me).has(PermissionsBitField.Flags.SendMessages))
-      return i.reply({ content: 'Sin permisos en el canal de reseñas.', ephemeral: true });
+      return i.reply({ content: 'Sin permisos en el canal de reseñas.', flags: 64 });
 
     await ch.send({ embeds: [embed] });
-    return i.reply({ content: '✅ Reseña enviada.', ephemeral: true });
+    return i.reply({ content: '✅ Reseña enviada.', flags: 64 });
   }
 });
 
-// Carga de comandos de /commands (ej. /proof)
+/**
+ * Loader de comandos en ./commands (incluye /cryptinstall, /proof, etc.)
+ */
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
@@ -121,22 +125,36 @@ client.on(Events.InteractionCreate, async (i) => {
   if (!i.isChatInputCommand()) return;
   const cmd = client.commands.get(i.commandName);
   if (!cmd) return;
-  try { await cmd.execute(i); }
-  catch (e) {
+  try {
+    await cmd.execute(i);
+  } catch (e) {
     console.error(e);
-    if (i.deferred || i.replied) await i.editReply('Error.');
-    else await i.reply({ content: 'Error.', ephemeral: true });
+    if (!i.deferred && !i.replied) {
+      await i.reply({ content: 'Error.', flags: 64 }).catch(() => {});
+    } else {
+      await i.editReply('Error.').catch(() => {});
+    }
   }
 });
-// registra los comandos automáticamente (solo dejar temporalmente)
-require('./deploy-commands');
 
+try {
+  if (fs.existsSync(path.join(__dirname, 'deploy-commands.js'))) {
+    require('./deploy-commands');
+  } else if (fs.existsSync(path.join(__dirname, 'deploy.js'))) {
+    require('./deploy.js');
+  }
+} catch (e) {
+  console.warn('No pude auto-registrar comandos:', e.message);
+}
 
-client.login(process.env.DISCORD_TOKEN);
-
-
-
-
-
-
-
+const BOT_TOKEN = (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim()) ||
+                  (process.env.TOKEN && process.env.TOKEN.trim());
+if (!BOT_TOKEN) {
+  console.error('❌ Falta DISCORD_TOKEN en variables de entorno.');
+  process.exit(1);
+}
+console.log(`🔎 Token cargado: len=${BOT_TOKEN.length}, prefix=${BOT_TOKEN.slice(0,7)}...`);
+client.login(BOT_TOKEN).catch(err => {
+  console.error('❌ Error de login:', err);
+  process.exit(1);
+});
