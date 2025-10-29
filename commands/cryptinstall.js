@@ -55,11 +55,12 @@ module.exports = {
 
     await interaction.deferReply({ flags: 64 });
 
-    const description =
+const description =
 `🔧 **Guía visual – Instalación de Crypt External**
-Mira el video paso a paso 👉 ${VIDEO_URL}
-**Descarga Crypt External💥**👇
-${DOWNLOAD_URL}`;
+Mira el video paso a paso 👉 [Ver video en YouTube](${VIDEO_URL})
+
+**Descarga Crypt External 💥👇**
+[Haz clic aquí para descargar](${DOWNLOAD_URL})`;
 
     const buttons = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('🎬 Ver video').setURL(VIDEO_URL),
