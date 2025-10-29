@@ -129,8 +129,9 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 // registra los comandos automáticamente (solo dejar temporalmente)
-require('./deploy-commands');
+
 client.login(process.env.DISCORD_TOKEN);
+
 
 
 
