@@ -10,7 +10,7 @@ const {
   Client, GatewayIntentBits,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle,
-  EmbedBuilder, PermissionsBitField, Events, Collection
+  EmbedBuilder, PermissionsBitField, Events, Collection, MessageFlags
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -56,7 +56,7 @@ client.on(Events.InteractionCreate, async (i) => {
   if (i.isButton() && i.customId.startsWith('openreview:')) {
     const [, staffId, clienteId, titulo] = i.customId.split(':');
     if (clienteId !== 'any' && i.user.id !== clienteId)
-      return i.reply({ content: 'Este panel no es para vos.', flags: 64 });
+      return i.reply({ content: 'Este panel no es para vos.', flags: MessageFlags.Ephemeral });
 
     const modal = new ModalBuilder()
       .setCustomId(`submitreview:${staffId}:${clienteId}:${titulo}`)
@@ -81,11 +81,11 @@ client.on(Events.InteractionCreate, async (i) => {
   if (i.isModalSubmit() && i.customId.startsWith('submitreview:')) {
     const [, staffId, clienteId, titulo] = i.customId.split(':');
     if (clienteId !== 'any' && i.user.id !== clienteId)
-      return i.reply({ content: 'No autorizado.', flags: 64 });
+      return i.reply({ content: 'No autorizado.', flags: MessageFlags.Ephemeral });
 
     const n = parseInt(i.fields.getTextInputValue('puntaje'), 10);
     if (!Number.isInteger(n) || n < 1 || n > 5)
-      return i.reply({ content: 'Puntaje inválido. Usá 1–5.', flags: 64 });
+      return i.reply({ content: 'Puntaje inválido. Usá 1–5.', flags: MessageFlags.Ephemeral });
 
     const texto = i.fields.getTextInputValue('texto')?.trim();
     const estrellas = STAR.repeat(n) + EMPTY.repeat(5 - n);
@@ -97,17 +97,17 @@ client.on(Events.InteractionCreate, async (i) => {
         { name: 'Puntaje', value: `${estrellas} (${n}/5)`, inline: false },
         { name: 'Cliente', value: `<@${i.user.id}>`, inline: true },
         { name: 'Atendido por', value: `<@${staffId}>`, inline: true },
-        ...(texto ? [{ name: 'Comentario', value: texto }] : [])
+        ...(texto ? [{ name: 'Comentario', value: texto, inline: false }] : [])
       )
       .setColor(0x00A3FF)
       .setTimestamp();
 
     const ch = i.guild.channels.cache.get(process.env.REVIEWS_CHANNEL_ID);
     if (!ch || !ch.permissionsFor(i.guild.members.me).has(PermissionsBitField.Flags.SendMessages))
-      return i.reply({ content: 'Sin permisos en el canal de reseñas.', flags: 64 });
+      return i.reply({ content: 'Sin permisos en el canal de reseñas.', flags: MessageFlags.Ephemeral });
 
     await ch.send({ embeds: [embed] });
-    return i.reply({ content: '✅ Reseña enviada.', flags: 64 });
+    return i.reply({ content: '✅ Reseña enviada.', flags: MessageFlags.Ephemeral });
   }
 });
 
@@ -127,23 +127,21 @@ client.on(Events.InteractionCreate, async (i) => {
     await cmd.execute(i);
   } catch (e) {
     console.error(e);
-    // evitar doble respuesta
-    if (i.deferred && !i.replied) await i.editReply({ content: 'Error.' }).catch(() => {});
-    else if (!i.replied) await i.reply({ content: 'Error.', flags: 64 }).catch(() => {});
+    if (i.deferred && !i.replied)
+      await i.editReply({ content: 'Error.' }).catch(() => {});
+    else if (!i.replied)
+      await i.reply({ content: 'Error.', flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
 
 /* ---------- Login ---------- */
-const BOT_TOKEN =
-  (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim()) ||
-  (process.env.TOKEN && process.env.TOKEN.trim());
-
+const BOT_TOKEN = process.env.DISCORD_TOKEN?.trim();
 if (!BOT_TOKEN) {
   console.error('Falta DISCORD_TOKEN en variables de entorno.');
   process.exit(1);
 }
-
 client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
   process.exit(1);
 });
+
