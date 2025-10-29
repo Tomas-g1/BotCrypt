@@ -16,28 +16,31 @@ const commands = [
     .setDescription('Ping del bot'),
 
   // /proof
-  new SlashCommandBuilder()
-    .setName('proof')
-    .setDescription('Publica un comprobante en el canal de vouches')
-    .addStringOption(o =>
-      o.setName('producto').setDescription('Nombre del producto').setRequired(true)
-    )
-    .addStringOption(o =>
-      o.setName('duracion').setDescription('Duración')
-        .addChoices(
-          { name: 'Lifetime', value: 'Lifetime' },
-          { name: 'Monthly',  value: 'Monthly'  },
-          { name: 'Weekly',   value: 'Weekly'   },
-          { name: 'Daily',    value: 'Daily'    },
-        )
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName('comprador').setDescription('Usuario comprador (opcional)')
-    )
-    .addAttachmentOption(o =>
-      o.setName('imagen').setDescription('Foto del comprobante').setRequired(true)
-    )
+new SlashCommandBuilder()
+  .setName('proof')
+  .setDescription('Publica un comprobante en el canal de vouches')
+  // REQUERIDAS primero
+  .addStringOption(o =>
+    o.setName('producto').setDescription('Nombre del producto').setRequired(true)
+  )
+  .addStringOption(o =>
+    o.setName('duracion').setDescription('Duración')
+      .addChoices(
+        { name: 'Lifetime', value: 'Lifetime' },
+        { name: 'Monthly',  value: 'Monthly'  },
+        { name: 'Weekly',   value: 'Weekly'   },
+        { name: 'Daily',    value: 'Daily'    },
+      )
+      .setRequired(true)
+  )
+  .addAttachmentOption(o =>
+    o.setName('imagen').setDescription('Foto del comprobante').setRequired(true)
+  )
+  // OPCIONAL al final
+  .addUserOption(o =>
+    o.setName('comprador').setDescription('Usuario comprador (opcional)')
+  )
+
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -53,5 +56,6 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error('Error registrando comandos:', e);
   }
 })();
+
 
 
