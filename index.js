@@ -1,8 +1,8 @@
 const express = require("express");
 const app = express();
+
 app.get("/", (req, res) => res.send("BotCrypt activo"));
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
+app.listen(3000, () => console.log("Servidor web escuchando en puerto 3000"));
 
 require('dotenv').config();
 const {
@@ -109,7 +109,30 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
 
+const fs = require('fs');
+const path = require('path');
+const { Collection, Events } = require('discord.js');
+
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
+  const cmd = require(path.join(commandsPath, file));
+  if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
+}
+
+client.on(Events.InteractionCreate, async (i) => {
+  if (!i.isChatInputCommand()) return;
+  const cmd = client.commands.get(i.commandName);
+  if (!cmd) return;
+  try { await cmd.execute(i); }
+  catch (e) {
+    console.error(e);
+    if (i.deferred || i.replied) await i.editReply('Error.');
+    else await i.reply({ content: 'Error.', ephemeral: true });
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);
 
 
