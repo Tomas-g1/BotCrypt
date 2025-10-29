@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('BotCrypt activo'));
+app.get('/', (_req, res) => res.send('BotCrypt activo'));
 app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
 
 const {
@@ -16,14 +16,15 @@ const fs = require('fs');
 const path = require('path');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-const STAR='★', EMPTY='☆';
+const STAR = '★', EMPTY = '☆';
 
 client.once(Events.ClientReady, () => {
   console.log(`Bot conectado como ${client.user.tag}`);
 });
 
-
+/* ---------- /review y /cping ----------- */
 client.on(Events.InteractionCreate, async (i) => {
+  // /review
   if (i.isChatInputCommand() && i.commandName === 'review') {
     const staff   = i.options.getUser('staff', true);
     const cliente = i.options.getUser('cliente', false);
@@ -38,8 +39,8 @@ client.on(Events.InteractionCreate, async (i) => {
 
     const texto =
       `**${titulo}**\n` +
-      `✨ **¡Queremos tu opinión!** Tocá el botón para valorar **1–5** y dejar un comentario.\n` +
-      `🧑‍💼 Soporte de: **${staff.username}**`;
+      `Queremos tu opinión. Tocá el botón para valorar 1–5 y dejar un comentario.\n` +
+      `Soporte de: **${staff.username}**`;
 
     await i.reply({ content: texto, components: [row] });
     return;
@@ -51,9 +52,9 @@ client.on(Events.InteractionCreate, async (i) => {
     return i.reply({ content: `🏓 Pong ${ws} ms` });
   }
 
-  // Abrir modal
+  // abrir modal de review
   if (i.isButton() && i.customId.startsWith('openreview:')) {
-    const [ , staffId, clienteId, titulo ] = i.customId.split(':');
+    const [, staffId, clienteId, titulo] = i.customId.split(':');
     if (clienteId !== 'any' && i.user.id !== clienteId)
       return i.reply({ content: 'Este panel no es para vos.', flags: 64 });
 
@@ -76,13 +77,13 @@ client.on(Events.InteractionCreate, async (i) => {
     return i.showModal(modal);
   }
 
-  // Enviar reseña
+  // enviar reseña
   if (i.isModalSubmit() && i.customId.startsWith('submitreview:')) {
-    const [ , staffId, clienteId, titulo ] = i.customId.split(':');
+    const [, staffId, clienteId, titulo] = i.customId.split(':');
     if (clienteId !== 'any' && i.user.id !== clienteId)
       return i.reply({ content: 'No autorizado.', flags: 64 });
 
-    let n = parseInt(i.fields.getTextInputValue('puntaje'), 10);
+    const n = parseInt(i.fields.getTextInputValue('puntaje'), 10);
     if (!Number.isInteger(n) || n < 1 || n > 5)
       return i.reply({ content: 'Puntaje inválido. Usá 1–5.', flags: 64 });
 
@@ -96,9 +97,8 @@ client.on(Events.InteractionCreate, async (i) => {
         { name: 'Puntaje', value: `${estrellas} (${n}/5)`, inline: false },
         { name: 'Cliente', value: `<@${i.user.id}>`, inline: true },
         { name: 'Atendido por', value: `<@${staffId}>`, inline: true },
-        ...(texto ? [{ name: 'Comentario', value: texto, inline: false }] : [])
+        ...(texto ? [{ name: 'Comentario', value: texto }] : [])
       )
-      .setFooter({ text: 'Gracias por tu feedback. Nos ayuda a mejorar.' })
       .setColor(0x00A3FF)
       .setTimestamp();
 
@@ -111,9 +111,7 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 
-/**
- * Loader de comandos en ./commands (incluye /cryptinstall, /proof, etc.)
- */
+/* ---------- Loader de comandos ./commands (proof, cryptinstall, etc.) ---------- */
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
@@ -129,32 +127,23 @@ client.on(Events.InteractionCreate, async (i) => {
     await cmd.execute(i);
   } catch (e) {
     console.error(e);
-    if (!i.deferred && !i.replied) {
-      await i.reply({ content: 'Error.', flags: 64 }).catch(() => {});
-    } else {
-      await i.editReply('Error.').catch(() => {});
-    }
+    // evitar doble respuesta
+    if (i.deferred && !i.replied) await i.editReply({ content: 'Error.' }).catch(() => {});
+    else if (!i.replied) await i.reply({ content: 'Error.', flags: 64 }).catch(() => {});
   }
 });
 
-try {
-  if (fs.existsSync(path.join(__dirname, 'deploy-commands.js'))) {
-    require('./deploy-commands');
-  } else if (fs.existsSync(path.join(__dirname, 'deploy.js'))) {
-    require('./deploy.js');
-  }
-} catch (e) {
-  console.warn('No pude auto-registrar comandos:', e.message);
-}
+/* ---------- Login ---------- */
+const BOT_TOKEN =
+  (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim()) ||
+  (process.env.TOKEN && process.env.TOKEN.trim());
 
-const BOT_TOKEN = (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim()) ||
-                  (process.env.TOKEN && process.env.TOKEN.trim());
 if (!BOT_TOKEN) {
-  console.error('❌ Falta DISCORD_TOKEN en variables de entorno.');
+  console.error('Falta DISCORD_TOKEN en variables de entorno.');
   process.exit(1);
 }
-console.log(`🔎 Token cargado: len=${BOT_TOKEN.length}, prefix=${BOT_TOKEN.slice(0,7)}...`);
+
 client.login(BOT_TOKEN).catch(err => {
-  console.error('❌ Error de login:', err);
+  console.error('Error de login:', err);
   process.exit(1);
 });
