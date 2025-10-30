@@ -5,7 +5,7 @@ const {
   ButtonStyle,
   PermissionFlagsBits,
   EmbedBuilder,
-  MessageFlags
+  MessageFlags,
 } = require('discord.js');
 
 const ROLE_ID = '1413720897654886441';
@@ -14,6 +14,7 @@ const DOWNLOAD_URL = 'https://gofile.io/d/8vU96G';
 const AVATAR_URL = 'https://media.discordapp.net/attachments/1414002544711307264/1414091477751038074/SCRYT_IMAGE.png?ex=69038590&is=69023410&hm=453e39a8585f178f4e4a330b7d13de9c0fc48d30c578adf7bc18806597a9eb25&=&format=webp&quality=lossless&width=856&height=856';
 const WEBHOOK_NAME = 'Crypt External (auto)';
 
+// -------- util --------
 function getYouTubeThumb(url) {
   try {
     const u = new URL(url);
@@ -21,10 +22,18 @@ function getYouTubeThumb(url) {
     if (u.hostname.includes('youtu.be')) id = u.pathname.slice(1);
     else if (u.searchParams.has('v')) id = u.searchParams.get('v');
     else if (u.pathname.startsWith('/shorts/')) id = u.pathname.split('/')[2];
-    if (!id) return null;
-    return `https://img.youtube.com/vi/${id}/maxresdefault.jpg`;
-  } catch {
-    return null;
+    return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : null;
+  } catch { return null; }
+}
+
+// Defer seguro: evita crash si el token ya expiró (10062)
+async function safeDefer(i) {
+  try {
+    await i.deferReply({ flags: MessageFlags.Ephemeral });
+    return true;
+  } catch (e) {
+    if (e?.code === 10062) return false; // interacción vencida por cold start/restart
+    throw e;
   }
 }
 
@@ -35,24 +44,26 @@ module.exports = {
 
   async execute(i) {
     try {
-      // --- Validaciones iniciales ---
+      // Ignora interacciones muy viejas (cuando el bot despierta)
+      if (Date.now() - i.createdTimestamp > 14000) return;
+
+      // Defer inmediato
+      const ok = await safeDefer(i);
+      if (!ok) return; // no intentes responder
+
+      // Validaciones después del defer. Responder SIEMPRE con editReply.
       if (!i.inGuild())
-        return await i.reply({ content: '❌ Solo en servidores.', flags: MessageFlags.Ephemeral });
+        return await i.editReply('❌ Solo en servidores.');
 
-      const member = i.member;
-      if (!member.roles?.cache?.has(ROLE_ID))
-        return await i.reply({ content: '⛔ No tenés permisos.', flags: MessageFlags.Ephemeral });
+      if (!i.member.roles?.cache?.has(ROLE_ID))
+        return await i.editReply('⛔ No tenés permisos.');
 
-      const channel = i.channel;
       const me = i.guild.members.me;
-      const perms = channel.permissionsFor(me);
+      const perms = i.channel.permissionsFor(me);
       if (!perms?.has(PermissionFlagsBits.ManageWebhooks))
-        return await i.reply({ content: '❌ Falta **Manage Webhooks** en este canal.', flags: MessageFlags.Ephemeral });
+        return await i.editReply('❌ Falta **Manage Webhooks** en este canal.');
 
-      // --- defer inmediato para evitar Unknown interaction ---
-      await i.deferReply({ flags: MessageFlags.Ephemeral });
-
-      // --- contenido principal ---
+      // Contenido principal
       const description =
 `🔧 **Guía visual – Instalación de Crypt External**
 Mirá el video paso a paso 👉 [Ver video en YouTube](${VIDEO_URL})
@@ -73,12 +84,11 @@ Mirá el video paso a paso 👉 [Ver video en YouTube](${VIDEO_URL})
         .setImage(getYouTubeThumb(VIDEO_URL) ?? null)
         .setTimestamp();
 
-      // --- envío del webhook ---
-      const hooks = await channel.fetchWebhooks();
+      // Webhook
+      const hooks = await i.channel.fetchWebhooks();
       let webhook = hooks.find(h => h.name === WEBHOOK_NAME) ?? null;
-
       if (!webhook) {
-        webhook = await channel.createWebhook({
+        webhook = await i.channel.createWebhook({
           name: WEBHOOK_NAME,
           avatar: AVATAR_URL,
           reason: 'Publicación de guía Crypt External',
@@ -92,14 +102,12 @@ Mirá el video paso a paso 👉 [Ver video en YouTube](${VIDEO_URL})
         avatarURL: AVATAR_URL,
       });
 
-      // --- única respuesta permitida ---
       await i.editReply('✅ Instalación publicada correctamente.');
     } catch (err) {
       console.error('Error cryptinstall:', err);
-      if (i.deferred && !i.replied)
-        await i.editReply('❌ Ocurrió un error al publicar.');
-      else if (!i.replied)
-        await i.reply({ content: '❌ Error inesperado.', flags: MessageFlags.Ephemeral });
+      if (i.deferred && !i.replied) {
+        await i.editReply('❌ Ocurrió un error al publicar.').catch(() => {});
+      }
     }
   },
 };
