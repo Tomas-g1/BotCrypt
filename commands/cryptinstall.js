@@ -10,7 +10,7 @@ const {
 
 const ROLE_ID = '1413720897654886441';
 const VIDEO_URL = 'https://www.youtube.com/watch?v=JiCMi4Pmx8g';
-const DOWNLOAD_URL = 'https://gofile.io/d/8vU96G';
+const DOWNLOAD_URL = 'https://gofile.io/d/6VDtvV';
 const AVATAR_URL = 'https://media.discordapp.net/attachments/1414002544711307264/1414091477751038074/SCRYT_IMAGE.png?ex=69038590&is=69023410&hm=453e39a8585f178f4e4a330b7d13de9c0fc48d30c578adf7bc18806597a9eb25&=&format=webp&quality=lossless&width=856&height=856';
 const WEBHOOK_NAME = 'Crypt External (auto)';
 
