@@ -347,38 +347,54 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 
   // /end-invite-event
-  if (i.commandName === 'end-invite-event') {
+   if (i.commandName === 'end-invite-event') {
     const auto = i.options.getBoolean('auto') ?? true;
 
-    const db = loadDB(); const g = gref(db, i.guildId);
+    const db = loadDB(); 
+    const g  = gref(db, i.guildId);
     const top = getTop(g, 10);
-
     if (top.length === 0) {
-      g.event.active = false; saveDB(db);
+      g.event.active = false; 
+      saveDB(db);
       return i.reply('Evento finalizado. No hubo invitaciones.');
     }
 
     const elegibles = top.filter(x => x.valid >= MIN_VALID);
 
     let msg = `**Ranking final (TOP 10)**\n` +
-      top.map((r, idx) => `#${idx + 1} <@${r.userId}> — **${r.valid}**`).join('\n');
+      top.map((r, idx) => `#${idx + 1} <@${r.userId}> — **${r.valid}** invitaciones válidas`)
+         .join('\n');
 
     if (elegibles.length === 0) {
       msg += `\n\nNadie alcanzó **${MIN_VALID}** invitaciones válidas.`;
-      g.event.active = false; saveDB(db);
+      g.event.active = false; 
+      saveDB(db);
       return i.reply(msg);
     }
 
     if (auto) {
-      const ganador = elegibles[0];
-      msg += `\n\n🏆 **Ganador automático:** <@${ganador.userId}>`;
+      // Cada invitación válida = 1 ticket en el sorteo
+      const tickets = [];
+      for (const r of elegibles) {
+        for (let k = 0; k < r.valid; k++) {
+          tickets.push(r.userId);
+        }
+      }
+
+      const winnerId = tickets[Math.floor(Math.random() * tickets.length)];
+      const ganador  = elegibles.find(r => r.userId === winnerId);
+
+      msg += `\n\n🏆 **Ganador automático (sorteo ponderado):** <@${winnerId}>` +
+             `\nTiene **${ganador.valid}** invitaciones válidas.`;
     } else {
-      msg += `\n\nModo manual: elegí ganador entre los elegibles (>= ${MIN_VALID}).`;
+      msg += `\n\nModo manual: elegí ganador entre los elegibles (>= ${MIN_VALID} invitaciones).`;
     }
 
-    g.event.active = false; saveDB(db);
+    g.event.active = false; 
+    saveDB(db);
     return i.reply(msg);
   }
+
 });
 
 /* ========= Login ========= */
@@ -393,6 +409,7 @@ client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
   process.exit(1);
 });
+
 
 
 
