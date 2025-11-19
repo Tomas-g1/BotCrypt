@@ -18,6 +18,15 @@ const {
 
 const fs   = require('fs');
 const path = require('path');
+/* ========= CLIENT ========= */
+
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+});
+// cache de usos de invites para detectar cuál subió
+client.invitesCache = new Map(); // guildId -> Map(code -> uses)
+
+const STAR = '★', EMPTY = '☆';
 
 /* ========= CONFIG E INVITES: helpers en disco ========= */
 
@@ -51,16 +60,8 @@ function getTop(g, limit = 10) {
     .slice(0, limit);
 }
 
-/* ========= CLIENT ========= */
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
-});
 
-const STAR = '★', EMPTY = '☆';
-
-// cache de usos de invites para detectar cuál subió
-client.invitesCache = new Map(); // guildId -> Map(code -> uses)
 
 /* ========= READY ========= */
 
@@ -392,6 +393,7 @@ client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
   process.exit(1);
 });
+
 
 
 
