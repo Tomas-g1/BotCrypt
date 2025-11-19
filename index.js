@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 app.get('/', (_req, res) => res.send('BotCrypt activo'));
 // 🔹 Health-check para UptimeRobot y Render
 app.get('/health', (_req, res) => res.status(200).send('ok'));
@@ -14,18 +15,21 @@ const {
   ModalBuilder, TextInputBuilder, TextInputStyle,
   EmbedBuilder, PermissionsBitField, Events, Collection, MessageFlags
 } = require('discord.js');
-const fs = require('fs');
+
+const fs   = require('fs');
 const path = require('path');
-// ====== INVITES: config y helpers ======
-const MIN_VALID = 2;                            // requisito mínimo para ser elegible
-const ACCOUNT_MIN_AGE_MS = 7 * 24*60*60*1000;   // >7 días
-const STAY_MIN_MS         = 72 * 60*60*1000;    // >72 horas
+
+/* ========= CONFIG E INVITES: helpers en disco ========= */
+
+const MIN_VALID           = 2;                          // mínimo para ser elegible
+const ACCOUNT_MIN_AGE_MS  = 7  * 24 * 60 * 60 * 1000;   // >7 días
+const STAY_MIN_MS         = 72 * 60 * 60 * 1000;        // >72 horas
 
 const DATA_DIR  = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'invites.json');
 
 function ensureData() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+  if (!fs.existsSync(DATA_DIR))  fs.mkdirSync(DATA_DIR);
   if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '{}');
 }
 function loadDB() {
@@ -37,18 +41,32 @@ function saveDB(db) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
 }
 function gref(db, gid) {
-  db[gid] ??= { event:{startedAt:0,active:false}, users:{}, pending:{}, invites:{} };
+  db[gid] ??= { event:{ startedAt:0, active:false }, users:{}, pending:{}, invites:{} };
   return db[gid];
 }
-function getTop(g, limit=10) {
+function getTop(g, limit = 10) {
   return Object.entries(g.users)
-    .map(([uid, obj]) => ({ userId: uid, valid: obj.validInvites|0 }))
-    .sort((a,b)=> b.valid - a.valid)
+    .map(([uid, obj]) => ({ userId: uid, valid: obj.validInvites | 0 }))
+    .sort((a, b) => b.valid - a.valid)
     .slice(0, limit);
 }
 
+/* ========= CLIENT ========= */
+
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+});
+
+const STAR = '★', EMPTY = '☆';
+
 // cache de usos de invites para detectar cuál subió
 client.invitesCache = new Map(); // guildId -> Map(code -> uses)
+
+/* ========= READY ========= */
+
+client.once(Events.ClientReady, () => {
+  console.log(`Bot conectado como ${client.user.tag}`);
+});
 
 // Al iniciar: cachear invites y guardar inviter por código
 client.once(Events.ClientReady, async () => {
@@ -65,9 +83,13 @@ client.once(Events.ClientReady, async () => {
 
       client.invitesCache.set(gid, map);
       saveDB(db);
-    } catch { /* falta permiso para ver invites → ignorar */ }
+    } catch {
+      // falta permiso para ver invites → ignorar
+    }
   }
 });
+
+/* ========= EVENTOS DE INVITES ========= */
 
 // Cuando crean una invite nueva
 client.on(Events.InviteCreate, (inv) => {
@@ -84,21 +106,29 @@ client.on(Events.InviteCreate, (inv) => {
 // Cuando entra alguien: detectar la invite usada y aplicar filtros
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
-  const gid = member.guild.id;
-  const now = Date.now();
+
+  const gid       = member.guild.id;
+  const now       = Date.now();
   const oldEnough = (now - member.user.createdTimestamp) >= ACCOUNT_MIN_AGE_MS;
 
-  let usedCode = null, inviterId = null;
+  let usedCode = null;
+  let inviterId = null;
+
   try {
     const fetched = await member.guild.invites.fetch();
-    const before = client.invitesCache.get(gid) ?? new Map();
-    const after  = new Map();
+    const before  = client.invitesCache.get(gid) ?? new Map();
+    const after   = new Map();
+
     fetched.forEach(i => after.set(i.code, i.uses ?? 0));
 
     for (const [code, usesAfter] of after) {
       const usesBefore = before.get(code) ?? 0;
-      if (usesAfter > usesBefore) { usedCode = code; break; }
+      if (usesAfter > usesBefore) {
+        usedCode = code;
+        break;
+      }
     }
+
     client.invitesCache.set(gid, after);
 
     if (usedCode) {
@@ -106,21 +136,26 @@ client.on(Events.GuildMemberAdd, async (member) => {
       inviterId = g.invites[usedCode]?.inviterId ?? null;
       saveDB(db);
     }
-  } catch { /* ignorar */ }
+  } catch {
+    // si falla el fetch, no contamos nada
+  }
 
   if (!usedCode || !inviterId) return;
-  if (!oldEnough) return; // <7 días → no cuenta
+  if (!oldEnough) return; // cuenta muy nueva → no suma
 
   const db = loadDB(); const g = gref(db, gid);
-  g.pending[member.id] = { inviterId, joinAt: now };      // para posible resta
+
+  g.pending[member.id] = { inviterId, joinAt: now };   // para posible resta
   g.users[inviterId] ??= { validInvites: 0 };
-  g.users[inviterId].validInvites += 1;                   // suma provisional
+  g.users[inviterId].validInvites += 1;                 // suma provisional
+
   saveDB(db);
 });
 
 // Si se va antes de 72h, restar
 client.on(Events.GuildMemberRemove, (member) => {
   if (member.user.bot) return;
+
   const gid = member.guild.id;
   const now = Date.now();
 
@@ -135,18 +170,13 @@ client.on(Events.GuildMemberRemove, (member) => {
         Math.max(0, (g.users[inviterId].validInvites || 0) - 1);
     }
   }
+
   delete g.pending[member.id];
   saveDB(db);
 });
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
-const STAR = '★', EMPTY = '☆';
 
-client.once(Events.ClientReady, () => {
-  console.log(`Bot conectado como ${client.user.tag}`);
-});
+/* ========= /review y /cping ========= */
 
-/* ---------- /review y /cping ----------- */
 client.on(Events.InteractionCreate, async (i) => {
   // /review
   if (i.isChatInputCommand() && i.commandName === 'review') {
@@ -187,17 +217,24 @@ client.on(Events.InteractionCreate, async (i) => {
       .setTitle('📝 Comentario breve');
 
     const puntaje = new TextInputBuilder()
-      .setCustomId('puntaje').setLabel('Puntaje (1–5)')
-      .setPlaceholder('1-5').setStyle(TextInputStyle.Short).setRequired(true);
+      .setCustomId('puntaje')
+      .setLabel('Puntaje (1–5)')
+      .setPlaceholder('1-5')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
 
     const comentario = new TextInputBuilder()
-      .setCustomId('texto').setLabel('¿Qué te pareció la atención?')
-      .setStyle(TextInputStyle.Paragraph).setMaxLength(300).setRequired(false);
+      .setCustomId('texto')
+      .setLabel('¿Qué te pareció la atención?')
+      .setStyle(TextInputStyle.Paragraph)
+      .setMaxLength(300)
+      .setRequired(false);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(puntaje),
       new ActionRowBuilder().addComponents(comentario)
     );
+
     return i.showModal(modal);
   }
 
@@ -235,8 +272,10 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 
-/* ---------- Loader de comandos ./commands (proof, cryptinstall, etc.) ---------- */
+/* ========= Loader de ./commands (proof, cryptinstall, etc.) ========= */
+
 client.commands = new Collection();
+
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
   const cmd = require(path.join(commandsPath, file));
@@ -245,8 +284,10 @@ for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) 
 
 client.on(Events.InteractionCreate, async (i) => {
   if (!i.isChatInputCommand()) return;
+
   const cmd = client.commands.get(i.commandName);
   if (!cmd) return;
+
   try {
     await cmd.execute(i);
   } catch (e) {
@@ -257,18 +298,21 @@ client.on(Events.InteractionCreate, async (i) => {
       await i.reply({ content: 'Error.', flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
-// ====== Slash commands del evento de invitaciones ======
+
+/* ========= Slash del evento de invitaciones ========= */
+
 client.on(Events.InteractionCreate, async (i) => {
   if (!i.isChatInputCommand()) return;
 
+  // /start-invite-event
   if (i.commandName === 'start-invite-event') {
     if (!i.memberPermissions.has(PermissionsBitField.Flags.Administrator))
       return i.reply({ content: 'Solo administradores.', flags: MessageFlags.Ephemeral });
 
     const db = loadDB(); const g = gref(db, i.guildId);
-    g.event = { startedAt: Date.now(), active: true };
-    g.users  = {};
-    g.pending= {};
+    g.event   = { startedAt: Date.now(), active: true };
+    g.users   = {};
+    g.pending = {};
 
     // refrescar invites existentes
     try {
@@ -285,30 +329,38 @@ client.on(Events.InteractionCreate, async (i) => {
     return i.reply({ content: 'Evento iniciado y contadores en 0.', flags: MessageFlags.Ephemeral });
   }
 
+  // /invite-leaderboard
   if (i.commandName === 'invite-leaderboard') {
     const db = loadDB(); const g = gref(db, i.guildId);
     const top = getTop(g, 10);
+
     if (top.length === 0)
       return i.reply({ content: 'No hay invitaciones válidas aún.', flags: MessageFlags.Ephemeral });
 
-    const txt = top.map((r,idx)=> `#${idx+1} <@${r.userId}> — **${r.valid}**`).join('\n')
+    const txt = top
+      .map((r, idx) => `#${idx + 1} <@${r.userId}> — **${r.valid}**`)
+      .join('\n')
       + `\n\nRequisito para ganar: **${MIN_VALID}** invitaciones válidas.`;
+
     return i.reply({ content: txt });
   }
 
+  // /end-invite-event
   if (i.commandName === 'end-invite-event') {
     const auto = i.options.getBoolean('auto') ?? true;
 
     const db = loadDB(); const g = gref(db, i.guildId);
     const top = getTop(g, 10);
+
     if (top.length === 0) {
       g.event.active = false; saveDB(db);
       return i.reply('Evento finalizado. No hubo invitaciones.');
     }
 
     const elegibles = top.filter(x => x.valid >= MIN_VALID);
+
     let msg = `**Ranking final (TOP 10)**\n` +
-      top.map((r,idx)=> `#${idx+1} <@${r.userId}> — **${r.valid}**`).join('\n');
+      top.map((r, idx) => `#${idx + 1} <@${r.userId}> — **${r.valid}**`).join('\n');
 
     if (elegibles.length === 0) {
       msg += `\n\nNadie alcanzó **${MIN_VALID}** invitaciones válidas.`;
@@ -328,16 +380,20 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 
-/* ---------- Login ---------- */
+/* ========= Login ========= */
+
 const BOT_TOKEN = process.env.DISCORD_TOKEN?.trim();
 if (!BOT_TOKEN) {
   console.error('Falta DISCORD_TOKEN en variables de entorno.');
   process.exit(1);
 }
+
 client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
   process.exit(1);
 });
+
+
 
 
 
