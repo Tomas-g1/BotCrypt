@@ -201,12 +201,6 @@ client.on(Events.InteractionCreate, async (i) => {
     return;
   }
 
-  // /cping
-  if (i.isChatInputCommand() && i.commandName === 'cping') {
-    const ws = Math.round(client.ws.ping);
-    return i.reply({ content: `🏓 Pong ${ws} ms` });
-  }
-
   // abrir modal de review
   if (i.isButton() && i.customId.startsWith('openreview:')) {
     const [, staffId, clienteId, titulo] = i.customId.split(':');
@@ -409,6 +403,7 @@ client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
   process.exit(1);
 });
+
 
 
 
