@@ -1,115 +1,108 @@
 require('dotenv').config();
-const { 
-  REST, Routes, SlashCommandBuilder, PermissionFlagsBits 
-} = require('discord.js');
+const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 const commands = [
-  /* ========= /review ========= */
+  // /review
   new SlashCommandBuilder()
     .setName('review')
     .setDescription('Solicitar reseña en este ticket')
     .addUserOption(o =>
       o.setName('staff')
-        .setDescription('Quién atendió')
-        .setRequired(true)
+       .setDescription('Quién atendió')
+       .setRequired(true)
     )
     .addUserOption(o =>
       o.setName('cliente')
-        .setDescription('Cliente que debe responder')
-        .setRequired(false)
+       .setDescription('Cliente que debe responder')
+       .setRequired(false)
     )
     .addStringOption(o =>
       o.setName('titulo')
-        .setDescription('Título del panel')
-        .setRequired(false)
+       .setDescription('Título del panel')
+       .setRequired(false)
     ),
 
-  /* ========= /cping ========= */
+  // /cping
   new SlashCommandBuilder()
     .setName('cping')
     .setDescription('Ping del bot'),
 
-  /* ========= /cryptinstall ========= */
+  // /cryptinstall
   new SlashCommandBuilder()
     .setName('cryptinstall')
-    .setDescription('Publica guía visual y descarga de Crypt External'),
+    .setDescription('Publica la guía visual y descarga de Crypt External en ESTE canal'),
 
-  /* ========= /proof ========= */
+  // /proof
   new SlashCommandBuilder()
     .setName('proof')
     .setDescription('Publica un comprobante en el canal de vouches')
+    // requeridos
     .addStringOption(o =>
       o.setName('producto')
-        .setDescription('Nombre del producto')
-        .setRequired(true)
+       .setDescription('Nombre del producto')
+       .setRequired(true)
     )
     .addStringOption(o =>
       o.setName('duracion')
-        .setDescription('Duración')
-        .addChoices(
-          { name: 'Lifetime', value: 'Lifetime' },
-          { name: 'Monthly',  value: 'Monthly'  },
-          { name: 'Weekly',   value: 'Weekly'   },
-          { name: 'Daily',    value: 'Daily'    },
-        )
-        .setRequired(true)
+       .setDescription('Duración')
+       .addChoices(
+         { name: 'Lifetime', value: 'Lifetime' },
+         { name: 'Monthly',  value: 'Monthly'  },
+         { name: 'Weekly',   value: 'Weekly'   },
+         { name: 'Daily',    value: 'Daily'    },
+       )
+       .setRequired(true)
     )
     .addAttachmentOption(o =>
       o.setName('imagen')
-        .setDescription('Foto del comprobante')
-        .setRequired(true)
+       .setDescription('Foto del comprobante')
+       .setRequired(true)
     )
+    // opcionales
     .addStringOption(o =>
       o.setName('comprador_texto')
-        .setDescription('Texto del comprador — poner "Anon" si no quiere mostrarse')
+       .setDescription('Texto del comprador. Escribí "Anon" si no quiere mostrarse')
     )
     .addUserOption(o =>
       o.setName('comprador')
-        .setDescription('Usuario comprador (opcional)')
+       .setDescription('Usuario comprador (opcional)')
     ),
 
-  /* ========= /start-invite-event ========= */
+  // /start-invite-event
   new SlashCommandBuilder()
     .setName('start-invite-event')
-    .setDescription('Inicia o reinicia el evento de invitaciones')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDescription('Inicia el evento de invitaciones válidas'),
 
-  /* ========= /invite-leaderboard ========= */
+  // /invite-leaderboard
   new SlashCommandBuilder()
     .setName('invite-leaderboard')
-    .setDescription('Muestra el top 10 de invitaciones válidas'),
+    .setDescription('Muestra el TOP de invitaciones válidas'),
 
-  /* ========= /end-invite-event ========= */
+  // /end-invite-event
   new SlashCommandBuilder()
     .setName('end-invite-event')
     .setDescription('Finaliza el evento de invitaciones')
     .addBooleanOption(o =>
       o.setName('auto')
-        .setDescription('Elegir ganador automático (true por defecto)')
-        .setRequired(false)
+       .setDescription('Elegir ganador automático (por defecto sí)')
+       .setRequired(false)
     ),
 
-].map(cmd => cmd.toJSON());
-
-/* ========= Registrar comandos ========= */
+].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('Registrando comandos slash...');
     await rest.put(
       Routes.applicationGuildCommands(process.env.APP_ID, process.env.GUILD_ID),
       { body: commands }
     );
-    console.log('Comandos registrados correctamente.');
+    console.log('Comandos registrados.');
   } catch (e) {
     console.error('Error registrando comandos:', e);
   }
 })();
-
-
-
 
 
 
