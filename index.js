@@ -5,9 +5,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (_req, res) => res.send('BotCrypt activo'));
-// 🔹 Health-check para UptimeRobot y Render
 app.get('/health', (_req, res) => res.status(200).send('ok'));
-app.listen(PORT, () => console.log(`Servidor web escuchando en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🌍 Servidor web escuchando en puerto ${PORT}`));
 
 const {
   Client, GatewayIntentBits,
@@ -18,21 +17,22 @@ const {
 
 const fs   = require('fs');
 const path = require('path');
+
 /* ========= CLIENT ========= */
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
-// cache de usos de invites para detectar cuál subió
+
 client.invitesCache = new Map(); // guildId -> Map(code -> uses)
 
 const STAR = '★', EMPTY = '☆';
 
-/* ========= CONFIG E INVITES: helpers en disco ========= */
+/* ========= BASE DE DATOS E INVITES ========= */
 
-const MIN_VALID           = 2;                          // mínimo para ser elegible
-const ACCOUNT_MIN_AGE_MS  = 7  * 24 * 60 * 60 * 1000;   // >7 días
-const STAY_MIN_MS         = 72 * 60 * 60 * 1000;        // >72 horas
+const MIN_VALID           = 2;                          
+const ACCOUNT_MIN_AGE_MS  = 7  * 24 * 60 * 60 * 1000;   // 7 días
+const STAY_MIN_MS         = 72 * 60 * 60 * 1000;        // 72 horas
 
 const DATA_DIR  = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'invites.json');
@@ -43,16 +43,29 @@ function ensureData() {
 }
 function loadDB() {
   ensureData();
-  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
 }
 function saveDB(db) {
   ensureData();
   fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
 }
+
+// Estructura DB: history es el registro permanente
 function gref(db, gid) {
-  db[gid] ??= { event:{ startedAt:0, active:false }, users:{}, pending:{}, invites:{} };
+  db[gid] ??= { 
+    event: { startedAt:0, active:false }, 
+    users: {}, 
+    pending: {}, 
+    invites: {},
+    history: {} 
+  };
   return db[gid];
 }
+
 function getTop(g, limit = 10) {
   return Object.entries(g.users)
     .map(([uid, obj]) => ({ userId: uid, valid: obj.validInvites | 0 }))
@@ -60,17 +73,11 @@ function getTop(g, limit = 10) {
     .slice(0, limit);
 }
 
-
-
-
 /* ========= READY ========= */
 
-client.once(Events.ClientReady, () => {
-  console.log(`Bot conectado como ${client.user.tag}`);
-});
-
-// Al iniciar: cachear invites y guardar inviter por código
 client.once(Events.ClientReady, async () => {
+  console.log(`🤖 Bot conectado como ${client.user.tag}`);
+  
   for (const [gid, guild] of client.guilds.cache) {
     try {
       const invites = await guild.invites.fetch();
@@ -84,15 +91,15 @@ client.once(Events.ClientReady, async () => {
 
       client.invitesCache.set(gid, map);
       saveDB(db);
-    } catch {
-      // falta permiso para ver invites → ignorar
+    } catch (e) {
+      console.log(`⚠️  Sin permisos de invite en: ${guild.name}`);
     }
   }
 });
 
-/* ========= EVENTOS DE INVITES ========= */
+/* ========= EVENTOS DE INVITES (Core) ========= */
 
-// Cuando crean una invite nueva
+// 1. Crear Invite
 client.on(Events.InviteCreate, (inv) => {
   const gid = inv.guild.id;
   const cache = client.invitesCache.get(gid) ?? new Map();
@@ -104,12 +111,12 @@ client.on(Events.InviteCreate, (inv) => {
   saveDB(db);
 });
 
-// Cuando entra alguien: detectar la invite usada y aplicar filtros
+// 2. Alguien entra (Detección de Padre + Historial)
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
 
-  const gid       = member.guild.id;
-  const now       = Date.now();
+  const gid = member.guild.id;
+  const now = Date.now();
   const oldEnough = (now - member.user.createdTimestamp) >= ACCOUNT_MIN_AGE_MS;
 
   let usedCode = null;
@@ -126,287 +133,242 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const usesBefore = before.get(code) ?? 0;
       if (usesAfter > usesBefore) {
         usedCode = code;
+        inviterId = fetched.get(code)?.inviter?.id;
         break;
       }
     }
-
     client.invitesCache.set(gid, after);
+  } catch {}
 
-    if (usedCode) {
-      const db = loadDB(); const g = gref(db, gid);
-      inviterId = g.invites[usedCode]?.inviterId ?? null;
-      saveDB(db);
-    }
-  } catch {
-    // si falla el fetch, no contamos nada
+  const db = loadDB(); 
+  const g = gref(db, gid);
+
+  if (usedCode && !inviterId) {
+    inviterId = g.invites[usedCode]?.inviterId ?? null;
   }
 
-  if (!usedCode || !inviterId) return;
-  if (!oldEnough) return; // cuenta muy nueva → no suma
+  // --- REGISTRO PERMANENTE ---
+  // Guardamos quién lo invitó para siempre, aunque el evento no esté activo.
+  if (inviterId) {
+    if (!g.history[member.id]) {
+        g.history[member.id] = {
+            inviterId: inviterId,
+            joinDate: now,
+            code: usedCode
+        };
+    }
+  }
+  
+  saveDB(db);
 
-  const db = loadDB(); const g = gref(db, gid);
-
-  g.pending[member.id] = { inviterId, joinAt: now };   // para posible resta
+  // --- LÓGICA DEL TORNEO ---
+  if (!inviterId) return; 
+  if (!oldEnough) return; 
+  
+  // Sumamos punto pendiente (se valida a las 72h)
+  g.pending[member.id] = { inviterId, joinAt: now };   
   g.users[inviterId] ??= { validInvites: 0 };
-  g.users[inviterId].validInvites += 1;                 // suma provisional
+  g.users[inviterId].validInvites += 1;                 
 
   saveDB(db);
 });
 
-// Si se va antes de 72h, restar
+// 3. Alguien sale
 client.on(Events.GuildMemberRemove, (member) => {
   if (member.user.bot) return;
-
   const gid = member.guild.id;
   const now = Date.now();
-
   const db = loadDB(); const g = gref(db, gid);
+  
   const pend = g.pending[member.id];
-  if (!pend) return;
-
-  if (now - pend.joinAt < STAY_MIN_MS) {
-    const inviterId = pend.inviterId;
-    if (inviterId && g.users[inviterId]) {
-      g.users[inviterId].validInvites =
-        Math.max(0, (g.users[inviterId].validInvites || 0) - 1);
+  
+  if (pend) {
+    if (now - pend.joinAt < STAY_MIN_MS) {
+      const inviterId = pend.inviterId;
+      if (inviterId && g.users[inviterId]) {
+        g.users[inviterId].validInvites = Math.max(0, (g.users[inviterId].validInvites || 0) - 1);
+      }
     }
+    delete g.pending[member.id];
   }
-
-  delete g.pending[member.id];
+  
+  // NO borramos g.history[member.id]. El registro queda por si vuelve.
   saveDB(db);
 });
 
-/* ========= /review y /cping ========= */
-
-client.on(Events.InteractionCreate, async (i) => {
-  // /review
-  if (i.isChatInputCommand() && i.commandName === 'review') {
-    const staff   = i.options.getUser('staff', true);
-    const cliente = i.options.getUser('cliente', false);
-    const titulo  = i.options.getString('titulo') ?? 'Calificá tu experiencia';
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`openreview:${staff.id}:${cliente?.id ?? 'any'}:${titulo}`)
-        .setLabel('⭐ Dejar reseña')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    const texto =
-      `**${titulo}**\n` +
-      `Queremos tu opinión. Tocá el botón para valorar 1–5 y dejar un comentario.\n` +
-      `Soporte de: **${staff.username}**`;
-
-    await i.reply({ content: texto, components: [row] });
-    return;
-  }
-
-  // abrir modal de review
-  if (i.isButton() && i.customId.startsWith('openreview:')) {
-    const [, staffId, clienteId, titulo] = i.customId.split(':');
-    if (clienteId !== 'any' && i.user.id !== clienteId)
-      return i.reply({ content: 'Este panel no es para vos.', flags: MessageFlags.Ephemeral });
-
-    const modal = new ModalBuilder()
-      .setCustomId(`submitreview:${staffId}:${clienteId}:${titulo}`)
-      .setTitle('📝 Comentario breve');
-
-    const puntaje = new TextInputBuilder()
-      .setCustomId('puntaje')
-      .setLabel('Puntaje (1–5)')
-      .setPlaceholder('1-5')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const comentario = new TextInputBuilder()
-      .setCustomId('texto')
-      .setLabel('¿Qué te pareció la atención?')
-      .setStyle(TextInputStyle.Paragraph)
-      .setMaxLength(300)
-      .setRequired(false);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(puntaje),
-      new ActionRowBuilder().addComponents(comentario)
-    );
-
-    return i.showModal(modal);
-  }
-
-  // enviar reseña
-  if (i.isModalSubmit() && i.customId.startsWith('submitreview:')) {
-    const [, staffId, clienteId, titulo] = i.customId.split(':');
-    if (clienteId !== 'any' && i.user.id !== clienteId)
-      return i.reply({ content: 'No autorizado.', flags: MessageFlags.Ephemeral });
-
-    const n = parseInt(i.fields.getTextInputValue('puntaje'), 10);
-    if (!Number.isInteger(n) || n < 1 || n > 5)
-      return i.reply({ content: 'Puntaje inválido. Usá 1–5.', flags: MessageFlags.Ephemeral });
-
-    const texto = i.fields.getTextInputValue('texto')?.trim();
-    const estrellas = STAR.repeat(n) + EMPTY.repeat(5 - n);
-
-    const embed = new EmbedBuilder()
-      .setTitle('Nueva reseña')
-      .setDescription(`**${titulo}**`)
-      .addFields(
-        { name: 'Puntaje', value: `${estrellas} (${n}/5)`, inline: false },
-        { name: 'Cliente', value: `<@${i.user.id}>`, inline: true },
-        { name: 'Atendido por', value: `<@${staffId}>`, inline: true },
-        ...(texto ? [{ name: 'Comentario', value: texto, inline: false }] : [])
-      )
-      .setColor(0x00A3FF)
-      .setTimestamp();
-
-    const ch = i.guild.channels.cache.get(process.env.REVIEWS_CHANNEL_ID);
-    if (!ch || !ch.permissionsFor(i.guild.members.me).has(PermissionsBitField.Flags.SendMessages))
-      return i.reply({ content: 'Sin permisos en el canal de reseñas.', flags: MessageFlags.Ephemeral });
-
-    await ch.send({ embeds: [embed] });
-    return i.reply({ content: '✅ Reseña enviada.', flags: MessageFlags.Ephemeral });
-  }
-});
-
-/* ========= Loader de ./commands (proof, cryptinstall, etc.) ========= */
+/* ========= COMMAND HANDLER & INTERACTIONS ========= */
 
 client.commands = new Collection();
-
 const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
-  const cmd = require(path.join(commandsPath, file));
-  if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
+
+// Cargamos comandos externos si existen
+if (fs.existsSync(commandsPath)) {
+    for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
+      const cmd = require(path.join(commandsPath, file));
+      if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
+    }
 }
 
 client.on(Events.InteractionCreate, async (i) => {
-  if (!i.isChatInputCommand()) return;
+  
+  /* --- COMANDOS SLASH --- */
+  if (i.isChatInputCommand()) {
+    
+    // -> /who-invited (Historial)
+    if (i.commandName === 'who-invited') {
+        const target = i.options.getUser('usuario') || i.user;
+        const db = loadDB(); const g = gref(db, i.guildId);
+        const record = g.history[target.id];
 
-  const cmd = client.commands.get(i.commandName);
-  if (!cmd) return;
-
-  try {
-    await cmd.execute(i);
-  } catch (e) {
-    console.error(e);
-    if (i.deferred && !i.replied)
-      await i.editReply({ content: 'Error.' }).catch(() => {});
-    else if (!i.replied)
-      await i.reply({ content: 'Error.', flags: MessageFlags.Ephemeral }).catch(() => {});
-  }
-});
-
-/* ========= Slash del evento de invitaciones ========= */
-
-client.on(Events.InteractionCreate, async (i) => {
-  if (!i.isChatInputCommand()) return;
-
-  // /start-invite-event
-  if (i.commandName === 'start-invite-event') {
-    if (!i.memberPermissions.has(PermissionsBitField.Flags.Administrator))
-      return i.reply({ content: 'Solo administradores.', flags: MessageFlags.Ephemeral });
-
-    const db = loadDB(); const g = gref(db, i.guildId);
-    g.event   = { startedAt: Date.now(), active: true };
-    g.users   = {};
-    g.pending = {};
-
-    // refrescar invites existentes
-    try {
-      const invs = await i.guild.invites.fetch();
-      const map = new Map();
-      invs.forEach(inv => {
-        map.set(inv.code, inv.uses ?? 0);
-        g.invites[inv.code] = { uses: inv.uses ?? 0, inviterId: inv.inviter?.id ?? null };
-      });
-      client.invitesCache.set(i.guildId, map);
-    } catch {}
-
-    saveDB(db);
-    return i.reply({ content: 'Evento iniciado y contadores en 0.', flags: MessageFlags.Ephemeral });
-  }
-
-  // /invite-leaderboard
-  if (i.commandName === 'invite-leaderboard') {
-    const db = loadDB(); const g = gref(db, i.guildId);
-    const top = getTop(g, 10);
-
-    if (top.length === 0)
-      return i.reply({ content: 'No hay invitaciones válidas aún.', flags: MessageFlags.Ephemeral });
-
-    const txt = top
-      .map((r, idx) => `#${idx + 1} <@${r.userId}> — **${r.valid}**`)
-      .join('\n')
-      + `\n\nRequisito para ganar: **${MIN_VALID}** invitaciones válidas.`;
-
-    return i.reply({ content: txt });
-  }
-
-  // /end-invite-event
-   if (i.commandName === 'end-invite-event') {
-    const auto = i.options.getBoolean('auto') ?? true;
-
-    const db = loadDB(); 
-    const g  = gref(db, i.guildId);
-    const top = getTop(g, 10);
-    if (top.length === 0) {
-      g.event.active = false; 
-      saveDB(db);
-      return i.reply('Evento finalizado. No hubo invitaciones.');
-    }
-
-    const elegibles = top.filter(x => x.valid >= MIN_VALID);
-
-    let msg = `**Ranking final (TOP 10)**\n` +
-      top.map((r, idx) => `#${idx + 1} <@${r.userId}> — **${r.valid}** invitaciones válidas`)
-         .join('\n');
-
-    if (elegibles.length === 0) {
-      msg += `\n\nNadie alcanzó **${MIN_VALID}** invitaciones válidas.`;
-      g.event.active = false; 
-      saveDB(db);
-      return i.reply(msg);
-    }
-
-    if (auto) {
-      // Cada invitación válida = 1 ticket en el sorteo
-      const tickets = [];
-      for (const r of elegibles) {
-        for (let k = 0; k < r.valid; k++) {
-          tickets.push(r.userId);
+        if (!record) {
+            return i.reply({ content: `🔍 No tengo registro histórico de quién invitó a **${target.tag}**.`, flags: MessageFlags.Ephemeral });
         }
-      }
-
-      const winnerId = tickets[Math.floor(Math.random() * tickets.length)];
-      const ganador  = elegibles.find(r => r.userId === winnerId);
-
-      msg += `\n\n🏆 **Ganador automático (sorteo ponderado):** <@${winnerId}>` +
-             `\nTiene **${ganador.valid}** invitaciones válidas.`;
-    } else {
-      msg += `\n\nModo manual: elegí ganador entre los elegibles (>= ${MIN_VALID} invitaciones).`;
+        const dateStr = new Date(record.joinDate).toLocaleDateString('es-AR');
+        return i.reply({ 
+            content: `📂 **Registro Histórico**\n👤 Usuario: <@${target.id}>\n📩 Invitado originalmente por: <@${record.inviterId}>\n📅 Fecha primer ingreso: ${dateStr}\n🎫 Código: \`${record.code || '?'}\`` 
+        });
     }
 
-    g.event.active = false; 
-    saveDB(db);
-    return i.reply(msg);
+    // -> /start-invite-event
+    if (i.commandName === 'start-invite-event') {
+        if (!i.memberPermissions.has(PermissionsBitField.Flags.Administrator))
+          return i.reply({ content: 'Solo administradores.', flags: MessageFlags.Ephemeral });
+    
+        const db = loadDB(); const g = gref(db, i.guildId);
+        g.event = { startedAt: Date.now(), active: true };
+        
+        // Reiniciamos contadores, pero NO el historial
+        g.users   = {};
+        g.pending = {};
+    
+        try {
+          const invs = await i.guild.invites.fetch();
+          const map = new Map();
+          invs.forEach(inv => {
+            map.set(inv.code, inv.uses ?? 0);
+            g.invites[inv.code] = { uses: inv.uses ?? 0, inviterId: inv.inviter?.id ?? null };
+          });
+          client.invitesCache.set(i.guildId, map);
+        } catch {}
+    
+        saveDB(db);
+        return i.reply({ content: '🚀 **Evento Iniciado.**\nPuntajes reiniciados a 0. El historial permanente se mantiene.', flags: MessageFlags.Ephemeral });
+    }
+
+    // -> /invite-leaderboard
+    if (i.commandName === 'invite-leaderboard') {
+        const db = loadDB(); const g = gref(db, i.guildId);
+        const top = getTop(g, 10);
+    
+        if (top.length === 0)
+          return i.reply({ content: '📉 No hay puntos válidos en el evento actual.', flags: MessageFlags.Ephemeral });
+    
+        const txt = top
+          .map((r, idx) => `**#${idx + 1}** <@${r.userId}> — \`${r.valid}\` válidas`)
+          .join('\n') + `\n\n⚠ *Requisito: Cuenta >7 días y permanencia >72hs.*`;
+    
+        const embed = new EmbedBuilder().setTitle('🏆 Tabla de Clasificación').setDescription(txt).setColor(0xFFD700);
+        return i.reply({ embeds: [embed] });
+    }
+
+    // -> /end-invite-event
+    if (i.commandName === 'end-invite-event') {
+        if (!i.memberPermissions.has(PermissionsBitField.Flags.Administrator)) return i.reply('Admins only.');
+        
+        const auto = i.options.getBoolean('auto') ?? true;
+        const db = loadDB(); const g = gref(db, i.guildId);
+        const top = getTop(g, 15);
+
+        if (top.length === 0) {
+          g.event.active = false; saveDB(db);
+          return i.reply('Evento finalizado. Nadie sumó puntos.');
+        }
+
+        const elegibles = top.filter(x => x.valid >= MIN_VALID);
+        let msg = `🛑 **EVENTO FINALIZADO**\n\n**Ranking:**\n` +
+          top.map((r, idx) => `#${idx + 1} <@${r.userId}>: ${r.valid}`).join('\n');
+
+        if (elegibles.length > 0 && auto) {
+           const tickets = [];
+           elegibles.forEach(r => { for(let k=0; k<r.valid; k++) tickets.push(r.userId); });
+           const winnerId = tickets[Math.floor(Math.random() * tickets.length)];
+           msg += `\n\n🎉 **GANADOR DEL SORTEO:** <@${winnerId}>`;
+        }
+
+        g.event.active = false;
+        saveDB(db);
+        return i.reply(msg);
+    }
+
+    // -> /review
+    if (i.commandName === 'review') {
+        const staff   = i.options.getUser('staff', true);
+        const cliente = i.options.getUser('cliente', false);
+        const titulo  = i.options.getString('titulo') ?? 'Calificá tu experiencia';
+    
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`openreview:${staff.id}:${cliente?.id ?? 'any'}:${titulo}`)
+            .setLabel('⭐ Dejar reseña')
+            .setStyle(ButtonStyle.Primary)
+        );
+        await i.reply({ content: `**${titulo}**\nValora tu experiencia con <@${staff.id}>.`, components: [row] });
+    }
+
+    // Ejecutar comandos externos (cryptinstall, proof, etc.)
+    const cmd = client.commands.get(i.commandName);
+    if (cmd) {
+        try { await cmd.execute(i); } catch (e) { console.error(e); }
+    }
   }
 
+  /* --- INTERACCIONES DE REVIEW (Botones y Modales) --- */
+  if (i.isButton() && i.customId.startsWith('openreview:')) {
+     const [, staffId, clienteId, titulo] = i.customId.split(':');
+     if (clienteId !== 'any' && i.user.id !== clienteId) return i.reply({content:'Este botón no es para ti.', flags: MessageFlags.Ephemeral});
+     
+     const modal = new ModalBuilder().setCustomId(`submitreview:${staffId}:${clienteId}:${titulo}`).setTitle('Reseña');
+     const p1 = new TextInputBuilder().setCustomId('puntaje').setLabel('Puntaje (1-5)').setStyle(TextInputStyle.Short).setRequired(true);
+     const p2 = new TextInputBuilder().setCustomId('texto').setLabel('Comentario').setStyle(TextInputStyle.Paragraph).setRequired(false);
+     modal.addComponents(new ActionRowBuilder().addComponents(p1), new ActionRowBuilder().addComponents(p2));
+     await i.showModal(modal);
+  }
+
+  if (i.isModalSubmit() && i.customId.startsWith('submitreview:')) {
+      const [, staffId, , titulo] = i.customId.split(':');
+      const pts = parseInt(i.fields.getTextInputValue('puntaje'));
+      const txt = i.fields.getTextInputValue('texto');
+      
+      if(isNaN(pts) || pts < 1 || pts > 5) return i.reply({content:'Puntaje inválido (1-5)', flags:MessageFlags.Ephemeral});
+      
+      const stars = '⭐'.repeat(pts);
+      const embed = new EmbedBuilder()
+        .setTitle('Nueva Reseña: ' + titulo)
+        .addFields(
+            {name: 'Cliente', value: `<@${i.user.id}>`, inline:true},
+            {name: 'Staff', value: `<@${staffId}>`, inline:true},
+            {name: 'Puntaje', value: `${stars} (${pts}/5)`, inline:false},
+            {name: 'Comentario', value: txt || 'Sin comentario', inline:false}
+        )
+        .setColor(0x00FF00).setTimestamp();
+      
+      const ch = i.guild.channels.cache.get(process.env.REVIEWS_CHANNEL_ID);
+      if(ch) ch.send({embeds:[embed]});
+      i.reply({content:'✅ Reseña enviada.', flags:MessageFlags.Ephemeral});
+  }
 });
 
-/* ========= Login ========= */
+/* ========= LOGIN ========= */
 
 const BOT_TOKEN = process.env.DISCORD_TOKEN?.trim();
 if (!BOT_TOKEN) {
-  console.error('Falta DISCORD_TOKEN en variables de entorno.');
+  console.error('❌ Falta DISCORD_TOKEN en variables de entorno.');
   process.exit(1);
 }
 
 client.login(BOT_TOKEN).catch(err => {
   console.error('Error de login:', err);
-  process.exit(1);
 });
-
-
-
-
 
 
 
