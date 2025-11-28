@@ -2,11 +2,7 @@ require('dotenv').config();
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 const commands = [
-  require('dotenv').config();
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
-
-const commands = [
-  // --- NUEVO COMANDO ---
+  // --- NUEVO: Historial permanente ---
   new SlashCommandBuilder()
     .setName('who-invited')
     .setDescription('Muestra quién invitó a un usuario (Registro histórico permanente)')
@@ -16,10 +12,10 @@ const commands = [
          .setRequired(false)
     ),
   
-  // --- EVENTOS ---
+  // --- EVENTOS DE INVITACIÓN ---
   new SlashCommandBuilder()
     .setName('start-invite-event')
-    .setDescription('Inicia el evento de invitaciones (Reinicia puntajes, mantiene historial)'),
+    .setDescription('Inicia el evento (Reinicia puntajes del torneo, pero mantiene el historial histórico)'),
 
   new SlashCommandBuilder()
     .setName('invite-leaderboard')
@@ -27,89 +23,35 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('end-invite-event')
-    .setDescription('Finaliza el evento')
+    .setDescription('Finaliza el evento de invitaciones')
     .addBooleanOption(o =>
       o.setName('auto')
        .setDescription('Elegir ganador automático (por defecto sí)')
        .setRequired(false)
     ),
 
-  // --- REVIEW ---
+  // --- REVIEW SYSTEM ---
   new SlashCommandBuilder()
     .setName('review')
     .setDescription('Solicitar reseña en este ticket')
     .addUserOption(o => o.setName('staff').setDescription('Quién atendió').setRequired(true))
     .addUserOption(o => o.setName('cliente').setDescription('Cliente').setRequired(false))
-    .addStringOption(o => o.setName('titulo').setDescription('Título').setRequired(false)),
+    .addStringOption(o => o.setName('titulo').setDescription('Título del panel').setRequired(false)),
 
   // --- UTILS ---
-  new SlashCommandBuilder().setName('cping').setDescription('Ping del bot'),
-
-  // --- OTROS COMANDOS (Si tienes handlers en /commands) ---
-  new SlashCommandBuilder()
-    .setName('cryptinstall')
-    .setDescription('Publica guía de Crypt External'),
-    
-  new SlashCommandBuilder()
-    .setName('proof')
-    .setDescription('Publica un comprobante')
-    .addStringOption(o => o.setName('producto').setDescription('Nombre').setRequired(true))
-    .addStringOption(o => o.setName('duracion').setDescription('Duración').addChoices({name:'L',value:'Lifetime'},{name:'M',value:'Monthly'}).setRequired(true))
-    .addAttachmentOption(o => o.setName('imagen').setDescription('Foto').setRequired(true))
-    .addStringOption(o => o.setName('comprador_texto').setDescription('Texto opcional'))
-    .addUserOption(o => o.setName('comprador').setDescription('Tag opcional')),
-
-].map(c => c.toJSON());
-
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
-  try {
-    console.log('Registrando comandos...');
-    await rest.put(
-      Routes.applicationGuildCommands(process.env.APP_ID, process.env.GUILD_ID),
-      { body: commands }
-    );
-    console.log('✅ Comandos registrados con éxito.');
-  } catch (e) {
-    console.error('Error registrando comandos:', e);
-  }
-})();
-  // /review
-  new SlashCommandBuilder()
-    .setName('review')
-    .setDescription('Solicitar reseña en este ticket')
-    .addUserOption(o =>
-      o.setName('staff')
-       .setDescription('Quién atendió')
-       .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName('cliente')
-       .setDescription('Cliente que debe responder')
-       .setRequired(false)
-    )
-    .addStringOption(o =>
-      o.setName('titulo')
-       .setDescription('Título del panel')
-       .setRequired(false)
-    ),
-
-  // /cping
   new SlashCommandBuilder()
     .setName('cping')
     .setDescription('Ping del bot'),
 
-  // /cryptinstall
+  // --- CRYPT INSTALL ---
   new SlashCommandBuilder()
     .setName('cryptinstall')
     .setDescription('Publica la guía visual y descarga de Crypt External en ESTE canal'),
-
-  // /proof
+    
+  // --- PROOF (VOUCHES) ---
   new SlashCommandBuilder()
     .setName('proof')
     .setDescription('Publica un comprobante en el canal de vouches')
-    // requeridos
     .addStringOption(o =>
       o.setName('producto')
        .setDescription('Nombre del producto')
@@ -120,8 +62,10 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
        .setDescription('Duración')
        .addChoices(
          { name: 'Lifetime', value: 'Lifetime' },
+         { name: '3 Months', value: '3 Months' }, // <--- AGREGADO
          { name: 'Monthly',  value: 'Monthly'  },
          { name: 'Weekly',   value: 'Weekly'   },
+         { name: '3 Days',   value: '3 Days'   },   // <--- AGREGADO
          { name: 'Daily',    value: 'Daily'    },
        )
        .setRequired(true)
@@ -131,7 +75,6 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
        .setDescription('Foto del comprobante')
        .setRequired(true)
     )
-    // opcionales
     .addStringOption(o =>
       o.setName('comprador_texto')
        .setDescription('Texto del comprador. Escribí "Anon" si no quiere mostrarse')
@@ -141,42 +84,22 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
        .setDescription('Usuario comprador (opcional)')
     ),
 
-  // /start-invite-event
-  new SlashCommandBuilder()
-    .setName('start-invite-event')
-    .setDescription('Inicia el evento de invitaciones válidas'),
-
-  // /invite-leaderboard
-  new SlashCommandBuilder()
-    .setName('invite-leaderboard')
-    .setDescription('Muestra el TOP de invitaciones válidas'),
-
-  // /end-invite-event
-  new SlashCommandBuilder()
-    .setName('end-invite-event')
-    .setDescription('Finaliza el evento de invitaciones')
-    .addBooleanOption(o =>
-      o.setName('auto')
-       .setDescription('Elegir ganador automático (por defecto sí)')
-       .setRequired(false)
-    ),
-
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
+    console.log('🔄 Iniciando actualización de comandos (/) ...');
+    
     await rest.put(
       Routes.applicationGuildCommands(process.env.APP_ID, process.env.GUILD_ID),
       { body: commands }
     );
-    console.log('Comandos registrados.');
+
+    console.log('✅ Comandos registrados exitosamente (Opciones de Proof actualizadas).');
   } catch (e) {
-    console.error('Error registrando comandos:', e);
+    console.error('❌ Error registrando comandos:', e);
   }
 })();
-
-
-
 
