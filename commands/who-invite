@@ -1,0 +1,58 @@
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+
+const DATA_DIR  = path.join(__dirname, '..', 'data');
+const DATA_FILE = path.join(DATA_DIR, 'invites.json');
+
+function loadDB() {
+  try {
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+function gref(db, gid) {
+  db[gid] ??= { history: {} };
+  return db[gid];
+}
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('who-invited')
+    .setDescription('Muestra quién invitó a un usuario (historial permanente)')
+    .addUserOption(o =>
+      o.setName('usuario')
+       .setDescription('Usuario a consultar')
+       .setRequired(false)
+    ),
+
+  async execute(i) {
+    const target = i.options.getUser('usuario') || i.user;
+
+    const db = loadDB();
+    const g  = gref(db, i.guildId);
+
+    const record = g.history[target.id];
+    if (!record) {
+      return i.reply({
+        content: `🔍 No tengo registro histórico de quién invitó a **${target.tag}**.`,
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    const dateStr = new Date(record.joinDate).toLocaleDateString('es-AR');
+
+    const embed = new EmbedBuilder()
+      .setTitle('📂 Registro histórico de invitación')
+      .setColor(0x00A2FF)
+      .setDescription(
+`👤 Usuario: <@${target.id}>
+📩 Invitado originalmente por: <@${record.inviterId}>
+📅 Fecha del primer ingreso: **${dateStr}**
+🎫 Código usado: \`${record.code || '?'}\``
+      );
+
+    return i.reply({ embeds: [embed] });
+  }
+};
